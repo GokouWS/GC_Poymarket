@@ -27,11 +27,12 @@ export async function audit_wallet_reputation(input: Record<string, unknown>, co
         console.log(`🔍 Deep auditing wallet: ${addr}...`);
         
         // 1. Fetch all data points in parallel
-        const [positions, ageData, statistics, proximity] = await Promise.all([
+        const [positions, ageData, statistics, proximity, tracked] = await Promise.all([
             polymarketService.getUserPositions(addr),
             polymarketService.getWalletAgeAndFunding(addr),
             polymarketService.getWalletHistoricalStats(addr),
-            polymarketService.getWalletTopicProximity(addr)
+            polymarketService.getWalletTopicProximity(addr),
+            Promise.resolve(getTrackedWallet(addr))
         ]);
 
         const firstTx = ageData.firstTxDate ? ageData.firstTxDate.toISOString().split('T')[0] : "Unknown";
@@ -63,8 +64,14 @@ export async function audit_wallet_reputation(input: Record<string, unknown>, co
 📦 Active Positions: ${activeCount}
 📊 Historical Stats: $${totalVolume.toLocaleString()} volume across ${tradeCount} trades
 🎯 Top Niches: ${niches || "None / General"}
+
+🛡️ MONITOR REPUTATION:
+- Confidence Score: ${tracked?.insider_confidence_score || 0}/10
+- First Detected: ${tracked?.first_detected_at || "Never"}
+- Recent Notes: ${tracked?.notes || "No prior monitor activity."}
 -----------------------------------
 SIGNATURE ANALYSIS:
+${tracked && totalVolume === 0 ? "⚠️ DISCREPANCY DETECTED: This wallet triggered a monitor alert recently, but the Data API hasn't indexed the trade yet. It is NOT a 'ghost town'—it's a fresh mover." : ""}
 ${ageDays !== "Unknown" && ageDays < 7 && activeCount < 3 ? "- 🚨 FRESH BURNER SIGNATURE: Extremely young wallet with low position count." : ""}
 ${Object.values(proximity).some(pct => pct > 70) ? "- ⚠️ SPECIALIST SIGNATURE: High concentration in a specific category." : ""}
 ${totalVolume > 100000 ? "- 🔥 RE-ACTIVATED WHALE: High historical volume but low current positions." : ""}
