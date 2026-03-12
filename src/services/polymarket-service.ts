@@ -22,16 +22,20 @@ export class PolymarketService {
     /**
      * Search for markets on Polymarket
      */
-    async searchMarkets(query: string, seriousOnly: boolean = false): Promise<PolymarketMarket[]> {
+    async searchMarkets(query: string, seriousOnly: boolean = false, tagId?: string): Promise<PolymarketMarket[]> {
         try {
-            const response = await axios.get(`${this.gammaUrl}/markets`, {
-                params: {
-                    query,
-                    active: true,
-                    closed: false,
-                    limit: seriousOnly ? 40 : 10
-                }
-            });
+            const params: any = {
+                query,
+                active: true,
+                closed: false,
+                limit: seriousOnly ? 40 : 10
+            };
+
+            if (tagId) {
+                params.tag_id = tagId;
+            }
+
+            const response = await axios.get(`${this.gammaUrl}/markets`, { params });
             
             let markets = response.data as any[];
             
@@ -275,6 +279,19 @@ export class PolymarketService {
         } catch (error) {
             console.error("Polymarket getWalletTopicProximity error:", error);
             return {};
+        }
+    }
+
+    /**
+     * Get available tags/topics from Polymarket
+     */
+    async getTags(): Promise<any[]> {
+        try {
+            const response = await axios.get(`${this.gammaUrl}/tags`);
+            return response.data || [];
+        } catch (error) {
+            console.error("Polymarket getTags error:", error);
+            return [];
         }
     }
 }

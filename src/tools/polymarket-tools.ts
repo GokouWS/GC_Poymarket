@@ -8,13 +8,17 @@ import { polymarketService } from "../services/polymarket-service.js";
 export const searchPolymarketMarkets: ToolHandler = {
     definition: {
         name: "search_polymarket_markets",
-        description: "Search for prediction markets on Polymarket by query string. Returns a list of matching markets.",
+        description: "Search for prediction markets on Polymarket. Supports keyword search and precise Tag ID filtering.",
         parameters: {
             type: Type.OBJECT,
             properties: {
                 query: {
                     type: Type.STRING,
                     description: "The search query (e.g., 'Bitcoin', 'Trump', 'SpaceX')"
+                },
+                tagId: {
+                    type: Type.STRING,
+                    description: "Optional: Filter by a specific Tag ID (found using get_polymarket_tags)"
                 },
                 seriousOnly: {
                     type: Type.BOOLEAN,
@@ -26,20 +30,58 @@ export const searchPolymarketMarkets: ToolHandler = {
     },
     execute: async (input) => {
         const query = input.query as string;
+        const tagId = input.tagId as string | undefined;
         const seriousOnly = input.seriousOnly !== false; // Default to true
         try {
-            const markets = await polymarketService.searchMarkets(query, seriousOnly);
+            const markets = await polymarketService.searchMarkets(query, seriousOnly, tagId);
             if (markets.length === 0) {
-                return `No markets found for query: "${query}"`;
+                return `No markets found for query: "${query}"${tagId ? ` and Tag ID: ${tagId}` : ""}`;
             }
 
             const results = markets.map(m => {
-                return `- **${m.question}**\n  - ID: ${m.id}\n  - Outcomes: ${m.outcomes.join(", ")}\n  - Prices: ${m.outcomePrices.join(", ")}\n  - Volume: $${m.volume}`;
+                return `- **${m.question}**\n  - ID: ${m.id}\n  - Volume: $${Number(m.volume).toLocaleString()}\n  - Outcomes: ${m.outcomes.join(", ")}\n  - Prices: ${m.outcomePrices.join(", ")}`;
             }).join("\n\n");
 
-            return `Found ${markets.length} markets for "${query}":\n\n${results}`;
+            return `Found ${markets.length} markets:\n\n${results}`;
         } catch (error) {
             return `Error searching Polymarket markets: ${error instanceof Error ? error.message : String(error)}`;
+        }
+    }
+};
+
+/**
+ * Tool to discover available market topics (tags)
+ */
+export const getPolymarketTags: ToolHandler = {
+    definition: {
+        name: "get_polymarket_tags",
+        description: "Fetch available market topics and tags on Polymarket. Use this to find precise Tag IDs for high-conviction searching.",
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                filter: {
+                    type: Type.STRING,
+                    description: "Optional: Filter tags by name (e.g., 'Conflict', 'Crypto')"
+                }
+            }
+        }
+    },
+    execute: async (input) => {
+        const filter = (input.filter as string || "").toLowerCase();
+        try {
+            const tags = await polymarketService.getTags();
+            const filtered = tags
+                .filter(t => !filter || t.label.toLowerCase().includes(filter))
+                .slice(0, 50); // Max 50 for readability
+
+            if (filtered.length === 0) {
+                return `No tags found matching "${filter}".`;
+            }
+
+            const results = filtered.map(t => `- **${t.label}** (ID: \`${t.id}\`)`).join("\n");
+            return `Available Tags (Top ${filtered.length}):\n\n${results}`;
+        } catch (error) {
+            return `Error fetching Polymarket tags: ${error instanceof Error ? error.message : String(error)}`;
         }
     }
 };
