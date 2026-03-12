@@ -1,0 +1,10 @@
+node_modules
+dist
+.env
+mcp_config.json
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
+.agent/private
+scripts/test-*

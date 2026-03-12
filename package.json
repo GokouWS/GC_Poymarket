@@ -1,0 +1,39 @@
+{
+  "name": "gc-polymarket",
+  "version": "0.1.0",
+  "description": "Polymarket scanning AI agent",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^1.44.0",
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@pinecone-database/pinecone": "^7.1.0",
+    "@supabase/supabase-js": "^2.99.0",
+    "@types/eventsource": "^1.1.15",
+    "@types/ws": "^8.18.1",
+    "axios": "^1.13.6",
+    "better-sqlite3": "^12.6.2",
+    "dotenv": "^16.4.7",
+    "eventsource": "^4.1.0",
+    "grammy": "^1.35.0",
+    "node-cron": "^4.2.1",
+    "openai": "^6.27.0",
+    "ws": "^8.19.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.13.10",
+    "@types/node-cron": "^3.0.11",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
