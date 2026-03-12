@@ -62,20 +62,78 @@ export const getPolymarketMarketDetails: ToolHandler = {
         try {
             const market = await polymarketService.getMarketDetails(marketId);
             
-            let details = `# ${market.question}\n\n`;
-            details += `**Description:** ${market.description}\n`;
-            details += `**Outcomes:** ${market.outcomes.join(" / ")}\n`;
-            details += `**Current Prices:** ${market.outcomePrices.join(" / ")}\n`;
-            details += `**Total Volume:** $${market.volume}\n`;
-            details += `**Status:** ${market.active ? "Active" : "Closed"}\n`;
+            let details = `## 🎯 ${market.question}\n\n`;
+            details += `> ${market.description || "No description provided."}\n\n`;
             
+            details += `**📁 Category:** ${market.category || "General"}\n`;
+            details += `**📊 Volume:** $${Number(market.volume).toLocaleString()}\n`;
+            details += `**🚦 Status:** ${market.active ? "🟢 Active" : "🔴 Closed"}\n\n`;
+
+            details += `### 🎲 Outcomes & Prices\n`;
+            market.outcomes.forEach((outcome, i) => {
+                const price = market.outcomePrices[i] || "N/A";
+                details += `- **${outcome}:** \`${price}\`\n`;
+            });
+
             if (market.clobTokenIds && market.clobTokenIds.length > 0) {
-                details += `**Token IDs:** ${market.clobTokenIds.join(", ")}\n`;
+                details += `\n**🔗 Market IDs:**\n- Market ID: \`${market.id}\`\n- CLOB Tokens: \`${market.clobTokenIds.join(", ")}\`\n`;
             }
+
+            details += `\n🔗 [View on Polymarket](https://polymarket.com/event/${marketId})`;
 
             return details;
         } catch (error) {
             return `Error fetching market details for "${marketId}": ${error instanceof Error ? error.message : String(error)}`;
+        }
+    }
+};
+
+/**
+ * Tool to get the order book (liquidity) for a specific token
+ */
+export const getPolymarketOrderBook: ToolHandler = {
+    definition: {
+        name: "get_polymarket_order_book",
+        description: "Fetch the current buy/sell order book depth for a specific Polymarket token. Helps gauge market liquidity and slip.",
+        parameters: {
+            type: Type.OBJECT,
+            properties: {
+                tokenId: {
+                    type: Type.STRING,
+                    description: "The CLOB token ID (found in market details)"
+                }
+            },
+            required: ["tokenId"]
+        }
+    },
+    execute: async (input) => {
+        const tokenId = input.tokenId as string;
+        try {
+            const book = await polymarketService.getOrderBook(tokenId);
+            
+            let details = `### 📚 Order Book for \`${tokenId}\`\n\n`;
+            
+            const bids = book.bids || [];
+            const asks = book.asks || [];
+
+            details += `**🟢 Top Bids (Buys):**\n`;
+            bids.slice(0, 5).forEach((b: any) => {
+                details += `- Price: \`${b.price}\` | Size: \`${b.size}\`\n`;
+            });
+
+            details += `\n**🔴 Top Asks (Sells):**\n`;
+            asks.slice(0, 5).forEach((a: any) => {
+                details += `- Price: \`${a.price}\` | Size: \`${a.size}\`\n`;
+            });
+
+            if (bids.length > 0 && asks.length > 0) {
+                const spread = (parseFloat(asks[0].price) - parseFloat(bids[0].price)).toFixed(4);
+                details += `\n**⚖️ Spread:** \`${spread}\``;
+            }
+
+            return details;
+        } catch (error) {
+            return `Error fetching order book for "${tokenId}": ${error instanceof Error ? error.message : String(error)}`;
         }
     }
 };
