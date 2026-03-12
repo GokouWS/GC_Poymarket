@@ -22,17 +22,32 @@ export class PolymarketService {
     /**
      * Search for markets on Polymarket
      */
-    async searchMarkets(query: string): Promise<PolymarketMarket[]> {
+    async searchMarkets(query: string, seriousOnly: boolean = false): Promise<PolymarketMarket[]> {
         try {
             const response = await axios.get(`${this.gammaUrl}/markets`, {
                 params: {
                     query,
                     active: true,
                     closed: false,
-                    limit: 10
+                    limit: seriousOnly ? 40 : 10
                 }
             });
-            return this._parseMarkets(response.data as PolymarketMarket[]);
+            
+            let markets = response.data as any[];
+            
+            if (seriousOnly) {
+                const noiseKeywords = ["gta vi", "gta 6", "video game", "memecoin", "celebrity", "pop culture", "movie", "film"];
+                markets = markets.filter(m => {
+                    const content = `${m.question} ${m.description || ""}`.toLowerCase();
+                    return !noiseKeywords.some(noise => content.includes(noise));
+                });
+                
+                // Prioritize high volume serious markets
+                markets.sort((a, b) => parseFloat(b.volume || "0") - parseFloat(a.volume || "0"));
+                markets = markets.slice(0, 10);
+            }
+
+            return this._parseMarkets(markets);
         } catch (error) {
             console.error("Polymarket searchMarkets error:", error);
             throw error;
@@ -127,6 +142,23 @@ export class PolymarketService {
             return response.data;
         } catch (error) {
             console.error("Polymarket getUserPositions error:", error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get order book for a specific token
+     */
+    async getOrderBook(tokenId: string): Promise<any> {
+        try {
+            const response = await axios.get(`${this.clobUrl}/book`, {
+                params: {
+                    token_id: tokenId
+                }
+            });
+            return response.data;
+        } catch (error) {
+            console.error("Polymarket getOrderBook error:", error);
             throw error;
         }
     }

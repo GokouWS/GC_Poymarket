@@ -15,6 +15,10 @@ export const searchPolymarketMarkets: ToolHandler = {
                 query: {
                     type: Type.STRING,
                     description: "The search query (e.g., 'Bitcoin', 'Trump', 'SpaceX')"
+                },
+                seriousOnly: {
+                    type: Type.BOOLEAN,
+                    description: "Filter out meme-based or speculative pop-culture noise (e.g. GTA VI comparisons). Default: true"
                 }
             },
             required: ["query"]
@@ -22,8 +26,9 @@ export const searchPolymarketMarkets: ToolHandler = {
     },
     execute: async (input) => {
         const query = input.query as string;
+        const seriousOnly = input.seriousOnly !== false; // Default to true
         try {
-            const markets = await polymarketService.searchMarkets(query);
+            const markets = await polymarketService.searchMarkets(query, seriousOnly);
             if (markets.length === 0) {
                 return `No markets found for query: "${query}"`;
             }
