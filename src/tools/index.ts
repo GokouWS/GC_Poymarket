@@ -87,6 +87,13 @@ export async function loadTools(): Promise<void> {
         registerTool(m.getPolymarketTopMarkets);
     }).catch(e => console.error("Missing Polymarket tools:", e));
 
+    await import("./audit-wallet-reputation.js").then((m) => {
+        registerTool({
+            definition: m.auditWalletReputationDefinition,
+            execute: m.audit_wallet_reputation
+        });
+    }).catch(e => console.error("Missing audit_wallet_reputation tool:", e));
+
     // Load MCP servers dynamically from config
     await mcpManager.connectAll();
 

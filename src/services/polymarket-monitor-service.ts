@@ -2,6 +2,7 @@ import WebSocket from "ws";
 import { config } from "../config.js";
 import { bot } from "../bot.js";
 import { polymarketService } from "./polymarket-service.js";
+import { getTrackedWallet, upsertTrackedWallet, incrementInsiderScore } from "../memory/sqlite.js";
 
 export class PolymarketMonitorService {
     private ws: WebSocket | null = null;
@@ -11,6 +12,11 @@ export class PolymarketMonitorService {
     private CACHE_TTL = 1000 * 60 * 10; // 10 minutes cache
 
     private cacheCleanupInterval: NodeJS.Timeout | null = null;
+
+    // Temporal Cluster Tracking: Map<"marketId-outcome", { startTime: number, wallets: Set<address> }>
+    private clusters = new Map<string, { startTime: number, wallets: Set<string> }>();
+    private CLUSTER_WINDOW = 1000 * 60 * 10; // 10 minutes
+    private CLUSTER_THRESHOLD = 5; // 5 unique "fresh" wallets
 
     constructor() {}
 
@@ -136,34 +142,84 @@ export class PolymarketMonitorService {
         const outcome = payload.outcome || "Unknown";
         const side = payload.side || "TRADE";
         
-        // Heuristic 1: Wallet Freshness Check (with caching)
+        // Multi-Factor Freshness Scoring
         let isFreshWallet = false;
+        let walletAgeDays = -1;
+        let historicalVolume = 0;
+        let isWhale = value >= 50000;
+
         try {
+            // 1. Position Check (Cached)
             const cached = this.positionCache.get(traderAddress);
             let positions;
-
             if (cached && (Date.now() - cached.timestamp < this.CACHE_TTL)) {
                 positions = cached.positions;
             } else {
                 positions = await polymarketService.getUserPositions(traderAddress);
                 this.positionCache.set(traderAddress, { positions, timestamp: Date.now() });
             }
-
-            // If they have fewer than 3 active positions, consider them "Fresh"
             if (Array.isArray(positions) && positions.length < 3) {
                 isFreshWallet = true;
             }
+
+            // 2. Persistent Record Check
+            let tracked = getTrackedWallet(traderAddress);
+            if (!tracked) {
+                // Perform deep audit for new wallets
+                const ageData = await polymarketService.getWalletAgeAndFunding(traderAddress);
+                const stats = await polymarketService.getWalletHistoricalStats(traderAddress);
+                
+                historicalVolume = stats.totalVolume;
+                if (ageData.firstTxDate) {
+                    walletAgeDays = (Date.now() - ageData.firstTxDate.getTime()) / (1000 * 60 * 60 * 24);
+                }
+
+                tracked = upsertTrackedWallet(traderAddress, {
+                    total_pnl_usd: 0,
+                    insider_confidence_score: isFreshWallet ? 1 : 0,
+                    tags: JSON.stringify(isFreshWallet ? ["Fresh"] : []),
+                    notes: `Detected on ${title}. Age: ${walletAgeDays.toFixed(1)} days. Vol: $${historicalVolume.toFixed(2)}`
+                });
+            } else {
+                historicalVolume = tracked.total_pnl_usd; // Using as proxy or we can update it
+            }
+
         } catch (e) {
-            // Silently ignore position fetch errors
+            console.error("Auditing error:", e);
         }
 
-        // Alert Construction
+        // Temporal Cluster Detection
+        const clusterKey = `${payload.markerAddress || payload.title}-${outcome}`;
+        const now = Date.now();
+        let clusterAlert = false;
+        
+        if (isFreshWallet) {
+            let cluster = this.clusters.get(clusterKey);
+            if (!cluster || (now - cluster.startTime > this.CLUSTER_WINDOW)) {
+                cluster = { startTime: now, wallets: new Set() };
+                this.clusters.set(clusterKey, cluster);
+            }
+            cluster.wallets.add(traderAddress);
+            
+            if (cluster.wallets.size >= this.CLUSTER_THRESHOLD) {
+                clusterAlert = true;
+                // Clear or increment threshold to avoid spamming the same cluster
+                this.clusters.delete(clusterKey);
+            }
+        }
+
+        // Signal Rating Logic
         let signalRating = "NORMAL";
-        if (isFreshWallet && value >= 10000) {
+        if (clusterAlert) {
+            signalRating = "🚨🚨 COORDINATED CLUSTER DETECTED (5+ Fresh Wallets)";
+            incrementInsiderScore(traderAddress, 5);
+        } else if (isFreshWallet && value >= 10000) {
             signalRating = "🚨 CRITICAL (Fresh Wallet + Whale)";
+            incrementInsiderScore(traderAddress, 2);
         } else if (isFreshWallet && value >= 2000) {
             signalRating = "⚠️ HIGH (Fresh Wallet)";
-        } else if (value >= 50000) {
+            incrementInsiderScore(traderAddress, 1);
+        } else if (isWhale) {
             signalRating = "🔥 WHALE (Large Accumulation)";
         }
 

@@ -1,4 +1,5 @@
 import axios from "axios";
+import { config } from "../config.js";
 
 export interface PolymarketMarket {
     id: string;
@@ -10,6 +11,7 @@ export interface PolymarketMarket {
     active: boolean;
     closed: boolean;
     clobTokenIds: string[];
+    category?: string;
 }
 
 export class PolymarketService {
@@ -130,19 +132,117 @@ export class PolymarketService {
     }
 
     /**
-     * Get order book for a specific token
+     * Get the first transaction date and funding source using Polygonscan
      */
-    async getOrderBook(tokenId: string): Promise<any> {
+    async getWalletAgeAndFunding(address: string): Promise<{ firstTxDate: Date | null, fundingSource: string | null }> {
+        if (!config.polygonscanApiKey) {
+            return { firstTxDate: null, fundingSource: null };
+        }
+
         try {
-            const response = await axios.get(`${this.clobUrl}/book`, {
+            const response = await axios.get("https://api.polygonscan.com/api", {
                 params: {
-                    token_id: tokenId
+                    module: "account",
+                    action: "txlist",
+                    address: address,
+                    startblock: 0,
+                    endblock: 99999999,
+                    page: 1,
+                    offset: 10, // Get first 10 to identify funding
+                    sort: "asc",
+                    apikey: config.polygonscanApiKey
                 }
             });
-            return response.data;
+
+            if (response.data.status !== "1" || !response.data.result.length) {
+                return { firstTxDate: null, fundingSource: null };
+            }
+
+            const firstTx = response.data.result[0];
+            const firstTxDate = new Date(parseInt(firstTx.timeStamp) * 1000);
+            
+            // Try to identify if funding is from a CEX (common ones have labels usually, or we look at the sender)
+            const fundingSource = firstTx.from.toLowerCase() === address.toLowerCase() ? "self" : firstTx.from;
+
+            return { firstTxDate, fundingSource };
         } catch (error) {
-            console.error("Polymarket getOrderBook error:", error);
-            throw error;
+            console.error("Polygonscan getWalletAgeAndFunding error:", error);
+            return { firstTxDate: null, fundingSource: null };
+        }
+    }
+
+    /**
+     * Get total historical volume and trade count from Polymarket Data API
+     */
+    async getWalletHistoricalStats(address: string): Promise<{ totalVolume: number, tradeCount: number }> {
+        try {
+            // Polymarket Data API history
+            const response = await axios.get(`${this.dataUrl}/history`, {
+                params: {
+                    user: address
+                }
+            });
+
+            const trades = response.data || [];
+            let totalVolume = 0;
+            
+            for (const trade of trades) {
+                totalVolume += Math.abs(parseFloat(trade.usdValue || "0"));
+            }
+
+            return {
+                totalVolume,
+                tradeCount: trades.length
+            };
+        } catch (error) {
+            console.error("Polymarket getWalletHistoricalStats error:", error);
+            return { totalVolume: 0, tradeCount: 0 };
+        }
+    }
+
+    /**
+     * Analyze topic proximity (category concentration) for a wallet
+     */
+    async getWalletTopicProximity(address: string): Promise<Record<string, number>> {
+        try {
+            const response = await axios.get(`${this.dataUrl}/history`, {
+                params: { user: address, limit: 50 }
+            });
+
+            const trades = response.data || [];
+            const categoryCounts: Record<string, number> = {};
+            
+            // Limit deep category fetching to optimize performance
+            const sampleTrades = trades.slice(0, 20);
+            
+            for (const trade of sampleTrades) {
+                // Some trades might have a markerAddress or marketId
+                const marketId = trade.marketId || trade.asset;
+                if (!marketId) continue;
+
+                try {
+                    // This is intensive; in production we should cache market categories
+                    const market = await this.getMarketDetails(marketId);
+                    const category = market.category || "General";
+                    categoryCounts[category] = (categoryCounts[category] || 0) + 1;
+                } catch (e) {
+                    // Skip if market details fail
+                }
+            }
+
+            // Convert to percentages
+            const total = Object.values(categoryCounts).reduce((a, b) => a + b, 0);
+            if (total === 0) return {};
+
+            const proximity: Record<string, number> = {};
+            for (const [cat, count] of Object.entries(categoryCounts)) {
+                proximity[cat] = Math.round((count / total) * 100);
+            }
+
+            return proximity;
+        } catch (error) {
+            console.error("Polymarket getWalletTopicProximity error:", error);
+            return {};
         }
     }
 }

@@ -36,6 +36,16 @@ db.exec(`
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS tracked_wallets (
+        address TEXT PRIMARY KEY,
+        first_detected_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        last_active_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        total_pnl_usd REAL DEFAULT 0,
+        insider_confidence_score INTEGER DEFAULT 0,
+        tags TEXT DEFAULT '[]',
+        notes TEXT
+    );
+
     CREATE INDEX IF NOT EXISTS msg_conv_idx ON messages(conversation_id);
 `);
 
@@ -64,6 +74,15 @@ export interface CoreFact {
     source_message_id?: string;
     created_at: string;
     updated_at: string;
+}
+export interface TrackedWallet {
+    address: string;
+    first_detected_at: string;
+    last_active_at: string;
+    total_pnl_usd: number;
+    insider_confidence_score: number;
+    tags: string; // JSON string
+    notes: string | null;
 }
 
 // ── API: Conversations ───────────────────────────────────────────────
@@ -152,4 +171,64 @@ export function upsertFact(category: string, fact: string, sourceMessageId?: str
 
 export function deleteFact(id: string) {
     db.prepare('DELETE FROM core_facts WHERE id = ?').run(id);
+}
+// ── API: Tracked Wallets ─────────────────────────────────────────────
+
+export function getTrackedWallet(address: string): TrackedWallet | undefined {
+    return db.prepare('SELECT * FROM tracked_wallets WHERE address = ?').get(address.toLowerCase()) as TrackedWallet | undefined;
+}
+
+export function upsertTrackedWallet(address: string, stats: Partial<TrackedWallet>): TrackedWallet {
+    const existing = getTrackedWallet(address);
+    const addr = address.toLowerCase();
+
+    if (existing) {
+        const updateFields: string[] = [];
+        const values: any[] = [];
+
+        if (stats.total_pnl_usd !== undefined) {
+            updateFields.push('total_pnl_usd = ?');
+            values.push(stats.total_pnl_usd);
+        }
+        if (stats.insider_confidence_score !== undefined) {
+            updateFields.push('insider_confidence_score = ?');
+            values.push(stats.insider_confidence_score);
+        }
+        if (stats.tags !== undefined) {
+            updateFields.push('tags = ?');
+            values.push(stats.tags);
+        }
+        if (stats.notes !== undefined) {
+            updateFields.push('notes = ?');
+            values.push(stats.notes);
+        }
+
+        updateFields.push('last_active_at = CURRENT_TIMESTAMP');
+
+        if (updateFields.length > 0) {
+            db.prepare(`UPDATE tracked_wallets SET ${updateFields.join(', ')} WHERE address = ?`).run(...values, addr);
+        }
+    } else {
+        db.prepare(`
+            INSERT INTO tracked_wallets (address, total_pnl_usd, insider_confidence_score, tags, notes)
+            VALUES (?, ?, ?, ?, ?)
+        `).run(
+            addr,
+            stats.total_pnl_usd ?? 0,
+            stats.insider_confidence_score ?? 0,
+            stats.tags ?? '[]',
+            stats.notes ?? null
+        );
+    }
+
+    return getTrackedWallet(addr)!;
+}
+
+export function incrementInsiderScore(address: string, amount: number = 1) {
+    db.prepare(`
+        UPDATE tracked_wallets 
+        SET insider_confidence_score = insider_confidence_score + ?, 
+            last_active_at = CURRENT_TIMESTAMP 
+        WHERE address = ?
+    `).run(amount, address.toLowerCase());
 }

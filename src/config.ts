@@ -29,6 +29,8 @@ interface Config {
     monitorThresholdUsd: number;
     /** Enable/disable the background monitor */
     monitorEnabled: boolean;
+    /** Polygonscan API key for wallet age checks */
+    polygonscanApiKey?: string;
 }
 
 function requireEnv(name: string): string {
@@ -70,4 +72,5 @@ export const config: Config = {
     maxIterations: Number(process.env.MAX_ITERATIONS) || 10,
     monitorThresholdUsd: Number(process.env.MONITOR_THRESHOLD_USD ?? "2000"),
     monitorEnabled: (process.env.MONITOR_ENABLED === "true"),
+    polygonscanApiKey: process.env.POLYGONSCAN_API_KEY,
 };
