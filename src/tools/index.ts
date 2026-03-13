@@ -86,7 +86,7 @@ export async function loadTools(): Promise<void> {
         registerTool(m.monitorPolymarketTrades);
         registerTool(m.getPolymarketTopMarkets);
         registerTool(m.getPolymarketOrderBook);
-        registerTool(m.getPolymarketTags);
+        registerTool(m.getPolymarketTopics);
     }).catch(e => console.error("Missing Polymarket tools:", e));
 
     await import("./audit-wallet-reputation.js").then((m) => {

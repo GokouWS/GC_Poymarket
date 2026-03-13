@@ -22,7 +22,7 @@ export class PolymarketService {
     /**
      * Search for markets on Polymarket
      */
-    async searchMarkets(query: string, seriousOnly: boolean = false, tagId?: string): Promise<PolymarketMarket[]> {
+    async searchMarkets(query: string, seriousOnly: boolean = false, tagId?: string, categoryId?: string): Promise<PolymarketMarket[]> {
         try {
             const params: any = {
                 query,
@@ -33,6 +33,10 @@ export class PolymarketService {
 
             if (tagId) {
                 params.tag_id = tagId;
+            }
+            
+            if (categoryId) {
+                params.category_id = categoryId;
             }
 
             const response = await axios.get(`${this.gammaUrl}/markets`, { params });
@@ -291,6 +295,19 @@ export class PolymarketService {
             return response.data || [];
         } catch (error) {
             console.error("Polymarket getTags error:", error);
+            return [];
+        }
+    }
+
+    /**
+     * Get available market categories
+     */
+    async getCategories(): Promise<any[]> {
+        try {
+            const response = await axios.get(`${this.gammaUrl}/categories`);
+            return response.data || [];
+        } catch (error) {
+            console.error("Polymarket getCategories error:", error);
             return [];
         }
     }

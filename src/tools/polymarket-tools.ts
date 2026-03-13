@@ -8,7 +8,7 @@ import { polymarketService } from "../services/polymarket-service.js";
 export const searchPolymarketMarkets: ToolHandler = {
     definition: {
         name: "search_polymarket_markets",
-        description: "Search for prediction markets on Polymarket. Supports keyword search and precise Tag ID filtering.",
+        description: "Search for prediction markets on Polymarket. Supports keyword search and precise Tag/Category ID filtering.",
         parameters: {
             type: Type.OBJECT,
             properties: {
@@ -18,7 +18,11 @@ export const searchPolymarketMarkets: ToolHandler = {
                 },
                 tagId: {
                     type: Type.STRING,
-                    description: "Optional: Filter by a specific Tag ID (found using get_polymarket_tags)"
+                    description: "Optional: Filter by a specific Tag ID"
+                },
+                categoryId: {
+                    type: Type.STRING,
+                    description: "Optional: Filter by a specific Category ID (found using get_polymarket_topics)"
                 },
                 seriousOnly: {
                     type: Type.BOOLEAN,
@@ -31,11 +35,12 @@ export const searchPolymarketMarkets: ToolHandler = {
     execute: async (input) => {
         const query = input.query as string;
         const tagId = input.tagId as string | undefined;
+        const categoryId = input.categoryId as string | undefined;
         const seriousOnly = input.seriousOnly !== false; // Default to true
         try {
-            const markets = await polymarketService.searchMarkets(query, seriousOnly, tagId);
+            const markets = await polymarketService.searchMarkets(query, seriousOnly, tagId, categoryId);
             if (markets.length === 0) {
-                return `No markets found for query: "${query}"${tagId ? ` and Tag ID: ${tagId}` : ""}`;
+                return `No markets found for query: "${query}"${tagId || categoryId ? " with the specified filters." : ""}`;
             }
 
             const results = markets.map(m => {
@@ -50,18 +55,18 @@ export const searchPolymarketMarkets: ToolHandler = {
 };
 
 /**
- * Tool to discover available market topics (tags)
+ * Tool to discover available market topics (Tags & Categories)
  */
-export const getPolymarketTags: ToolHandler = {
+export const getPolymarketTopics: ToolHandler = {
     definition: {
-        name: "get_polymarket_tags",
-        description: "Fetch available market topics and tags on Polymarket. Use this to find precise Tag IDs for high-conviction searching.",
+        name: "get_polymarket_topics",
+        description: "Fetch available market topics, categories, and tags on Polymarket. Use this to find precise IDs for high-conviction searching (e.g. 'Crypto' is a category).",
         parameters: {
             type: Type.OBJECT,
             properties: {
                 filter: {
                     type: Type.STRING,
-                    description: "Optional: Filter tags by name (e.g., 'Conflict', 'Crypto')"
+                    description: "Optional: Filter topics by name (e.g., 'Conflict', 'Crypto', 'Economics')"
                 }
             }
         }
@@ -69,19 +74,34 @@ export const getPolymarketTags: ToolHandler = {
     execute: async (input) => {
         const filter = (input.filter as string || "").toLowerCase();
         try {
-            const tags = await polymarketService.getTags();
-            const filtered = tags
-                .filter(t => !filter || t.label.toLowerCase().includes(filter))
-                .slice(0, 50); // Max 50 for readability
+            const [tags, categories] = await Promise.all([
+                polymarketService.getTags(),
+                polymarketService.getCategories()
+            ]);
 
-            if (filtered.length === 0) {
-                return `No tags found matching "${filter}".`;
+            const filteredTags = tags
+                .filter((t: any) => !filter || t.label.toLowerCase().includes(filter))
+                .slice(0, 30);
+
+            const filteredCategories = categories
+                .filter((c: any) => !filter || c.label.toLowerCase().includes(filter))
+                .slice(0, 30);
+
+            if (filteredTags.length === 0 && filteredCategories.length === 0) {
+                return `No topics found matching "${filter}".`;
             }
 
-            const results = filtered.map(t => `- **${t.label}** (ID: \`${t.id}\`)`).join("\n");
-            return `Available Tags (Top ${filtered.length}):\n\n${results}`;
+            let response = "";
+            if (filteredCategories.length > 0) {
+                response += `### 📂 Categories\n` + filteredCategories.map((c: any) => `- **${c.label}** (ID: \`${c.id}\`)`).join("\n") + "\n\n";
+            }
+            if (filteredTags.length > 0) {
+                response += `### 🏷️ Tags\n` + filteredTags.map((t: any) => `- **${t.label}** (ID: \`${t.id}\`)`).join("\n");
+            }
+
+            return `Market Topics Matching "${filter}":\n\n${response}`;
         } catch (error) {
-            return `Error fetching Polymarket tags: ${error instanceof Error ? error.message : String(error)}`;
+            return `Error fetching Polymarket topics: ${error instanceof Error ? error.message : String(error)}`;
         }
     }
 };
