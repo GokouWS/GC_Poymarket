@@ -28,7 +28,7 @@ export class PolymarketService {
                 query,
                 active: true,
                 closed: false,
-                limit: seriousOnly ? 40 : 10
+                limit: seriousOnly ? 100 : 20 // Fetch more so we have a pool to filter from
             };
 
             if (tagId) {
@@ -44,11 +44,11 @@ export class PolymarketService {
             let markets = response.data as any[];
             
             if (seriousOnly) {
-                // Expanded noise list to explicitly target sports and pop culture
                 const noiseKeywords = [
                     "gta vi", "gta 6", "video game", "memecoin", "celebrity", "pop culture", 
                     "movie", "film", "soccer", "football", "basketball", "baseball", "ufc", 
-                    "boxing", "f1", "nascar", "tennis", "cricket", "nfl", "nba", "mlb", "nhl"
+                    "boxing", "f1", "nascar", "tennis", "cricket", "nfl", "nba", "mlb", "nhl",
+                    "round of 16", "quarter-final", "semi-final", "final", "playoff", "qualifier"
                 ];
 
                 const seriousCategoryIds = ["5481", "5545", "5483", "5466", "5510"];
@@ -57,20 +57,20 @@ export class PolymarketService {
                     const content = `${m.question} ${m.description || ""}`.toLowerCase();
                     const isNoise = noiseKeywords.some(noise => content.includes(noise));
                     
-                    // If it's in a serious category, we are more lenient with keywords
-                    const isSeriousCategory = m.category_id && seriousCategoryIds.includes(m.category_id);
+                    // STRICT filtering: noise is noise regardless of category
+                    if (isNoise) return false;
                     
-                    if (isSeriousCategory) return true;
-                    return !isNoise;
+                    return true;
                 });
                 
-                // Prioritize: 1. Serious Categories, 2. High Volume
+                // Prioritize high volume
+                markets.sort((a, b) => parseFloat(b.volume || "0") - parseFloat(a.volume || "0"));
+                
+                // Secondary sorting: Serious categories first
                 markets.sort((a, b) => {
                     const aSerious = a.category_id && seriousCategoryIds.includes(a.category_id) ? 1 : 0;
                     const bSerious = b.category_id && seriousCategoryIds.includes(b.category_id) ? 1 : 0;
-                    
-                    if (aSerious !== bSerious) return bSerious - aSerious;
-                    return parseFloat(b.volume || "0") - parseFloat(a.volume || "0");
+                    return bSerious - aSerious;
                 });
                 
                 markets = markets.slice(0, 10);
