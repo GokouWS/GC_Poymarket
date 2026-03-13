@@ -44,14 +44,35 @@ export class PolymarketService {
             let markets = response.data as any[];
             
             if (seriousOnly) {
-                const noiseKeywords = ["gta vi", "gta 6", "video game", "memecoin", "celebrity", "pop culture", "movie", "film"];
+                // Expanded noise list to explicitly target sports and pop culture
+                const noiseKeywords = [
+                    "gta vi", "gta 6", "video game", "memecoin", "celebrity", "pop culture", 
+                    "movie", "film", "soccer", "football", "basketball", "baseball", "ufc", 
+                    "boxing", "f1", "nascar", "tennis", "cricket", "nfl", "nba", "mlb", "nhl"
+                ];
+
+                const seriousCategoryIds = ["5481", "5545", "5483", "5466", "5510"];
+
                 markets = markets.filter(m => {
                     const content = `${m.question} ${m.description || ""}`.toLowerCase();
-                    return !noiseKeywords.some(noise => content.includes(noise));
+                    const isNoise = noiseKeywords.some(noise => content.includes(noise));
+                    
+                    // If it's in a serious category, we are more lenient with keywords
+                    const isSeriousCategory = m.category_id && seriousCategoryIds.includes(m.category_id);
+                    
+                    if (isSeriousCategory) return true;
+                    return !isNoise;
                 });
                 
-                // Prioritize high volume serious markets
-                markets.sort((a, b) => parseFloat(b.volume || "0") - parseFloat(a.volume || "0"));
+                // Prioritize: 1. Serious Categories, 2. High Volume
+                markets.sort((a, b) => {
+                    const aSerious = a.category_id && seriousCategoryIds.includes(a.category_id) ? 1 : 0;
+                    const bSerious = b.category_id && seriousCategoryIds.includes(b.category_id) ? 1 : 0;
+                    
+                    if (aSerious !== bSerious) return bSerious - aSerious;
+                    return parseFloat(b.volume || "0") - parseFloat(a.volume || "0");
+                });
+                
                 markets = markets.slice(0, 10);
             }
 

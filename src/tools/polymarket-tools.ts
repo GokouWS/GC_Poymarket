@@ -88,7 +88,7 @@ export const getPolymarketTopics: ToolHandler = {
                 .slice(0, 30);
 
             if (filteredTags.length === 0 && filteredCategories.length === 0) {
-                return `No topics found matching "${filter}".`;
+                return `I couldn't find any topics matching "${filter}". \n\n**Tip:** Try broader terms like "Politics", "Macro", or "Conflict" to discover the high-level IDs.`;
             }
 
             let response = "";
@@ -99,7 +99,7 @@ export const getPolymarketTopics: ToolHandler = {
                 response += `### 🏷️ Tags\n` + filteredTags.map((t: any) => `- **${t.label}** (ID: \`${t.id}\`)`).join("\n");
             }
 
-            return `Market Topics Matching "${filter}":\n\n${response}`;
+            return `I found the following topics for "${filter}":\n\n${response}\nYou can use these IDs with \`search_polymarket_markets\` for high-precision results.`;
         } catch (error) {
             return `Error fetching Polymarket topics: ${error instanceof Error ? error.message : String(error)}`;
         }
