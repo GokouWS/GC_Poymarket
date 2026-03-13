@@ -216,8 +216,8 @@ export class PolymarketService {
      */
     async getWalletHistoricalStats(address: string): Promise<{ totalVolume: number, tradeCount: number }> {
         try {
-            // Polymarket Data API history
-            const response = await axios.get(`${this.dataUrl}/history`, {
+            // Polymarket Data API trades (replaces legacy /history)
+            const response = await axios.get(`${this.dataUrl}/trades`, {
                 params: {
                     user: address
                 }
@@ -227,11 +227,14 @@ export class PolymarketService {
             let totalVolume = 0;
             
             for (const trade of trades) {
-                totalVolume += Math.abs(parseFloat(trade.usdValue || "0"));
+                // Calculation: Price * Size (more reliable than usdValue field)
+                const price = parseFloat(trade.price || "0");
+                const size = parseFloat(trade.size || "0");
+                totalVolume += price * size;
             }
 
             return {
-                totalVolume,
+                totalVolume: Math.round(totalVolume * 100) / 100,
                 tradeCount: trades.length
             };
         } catch (error) {
